@@ -1,0 +1,17 @@
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.log
+*.env
+*.venv
+.env*
+.DS_Store
+.vscode/
+tests/
+Dockerfile
+README.md
+LICENSE
