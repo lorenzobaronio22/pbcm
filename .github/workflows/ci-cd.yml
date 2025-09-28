@@ -1,8 +1,8 @@
-name: Test
+name: CI/CD
 
 on:
-  push:
-    branches: [ '*' ]
+  pull_request:
+    branches: [ 'main' ]
   workflow_dispatch:
   workflow_call:
 
@@ -29,3 +29,70 @@ jobs:
           
       - name: Run tests
         run: uv run pytest tests -rA
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+      
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: "pyproject.toml"
+          
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+            enable-cache: true
+
+      - name: Install the project
+        run: uv sync --locked --all-extras --dev
+
+      - name: Bump patch beta
+        if: ${{ github.event.action == 'opened' || github.event.action == 'reopened' }}
+        run: uv version --bump patch --bump beta
+
+      - name: Bump beta
+        if: ${{ github.event.action == 'synchronize' }}
+        run: uv version --bump beta
+      
+      - name: Set version
+        id: version
+        run: echo "value=$(uv version --short)" >> $GITHUB_OUTPUT
+
+      - name: Commit bumped version
+        uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: Bump version to ${{ steps.version.outputs.value }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha
+            type=raw,value=${{ steps.version.outputs.value }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
